@@ -75,8 +75,8 @@ func (connection *timeBoundedConnection) Write(p []byte) (int, error) {
 func sshAgentCallback(env string) ssh.AuthMethod {
 	return ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
 		sock, err := net.Dial("unix", env)
-		if  err == nil {
-           return agent.NewClient(sock).Signers()
+		if err == nil {
+			return agent.NewClient(sock).Signers()
 		}
 		return nil, err
 	})
@@ -89,7 +89,7 @@ func NewRemoteAgentAuthRunnerWithTimeouts(user, host, agent string, timeouts Tim
 
 	config := &ssh.ClientConfig{
 		User: user,
-		Auth: []ssh.AuthMethod{ sshAgentCallback(agent) },
+		Auth: []ssh.AuthMethod{sshAgentCallback(agent)},
 	}
 
 	dialer := net.Dialer{
@@ -254,7 +254,6 @@ func NewRemotePassAuthRunnerWithTimeouts(
 
 // NewRemoteAgenntAuthRunner is one of functions for creating remote runner
 func NewRemoteAgentAuthRunner(user, host, agent string) (*Remote, error) {
-
 	config := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{sshAgentCallback(agent)},
@@ -271,7 +270,6 @@ func NewRemoteAgentAuthRunner(user, host, agent string) (*Remote, error) {
 		timeouts:   nil,
 	}, nil
 }
-
 
 // NewRemoteKeyAuthRunner is one of functions for creating remote runner
 func NewRemoteKeyAuthRunner(user, host, key string) (*Remote, error) {
