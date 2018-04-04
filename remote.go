@@ -12,6 +12,7 @@ import (
 	"github.com/reconquest/ser-go"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 // RemoteCmd is implementation of CmdWorker interface for remote commands
@@ -69,6 +70,67 @@ func (connection *timeBoundedConnection) Write(p []byte) (int, error) {
 	}
 
 	return connection.Conn.Write(p)
+}
+
+func sshAgentCallback(env string) ssh.AuthMethod {
+	return ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
+		sock, err := net.Dial("unix", env)
+		if err == nil {
+			return agent.NewClient(sock).Signers()
+		}
+		return nil, err
+	})
+}
+
+// NewRemoteAgentAuthRunnerWithTimeouts is one of functions for creating remote runner
+// Use this one instead of NewRemoteAgentAuthRunner if you need to
+// setup nondefault timeouts for ssh connection
+func NewRemoteAgentAuthRunnerWithTimeouts(user, host, agent string, timeouts Timeouts) (*Remote, error) {
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{sshAgentCallback(agent)},
+	}
+
+	dialer := net.Dialer{
+		Timeout:   timeouts.ConnectionTimeout,
+		KeepAlive: timeouts.KeepAlive,
+	}
+
+	if timeouts.ConnectionTimeout != 0 {
+		dialer.Deadline = time.Now().Add(timeouts.ConnectionTimeout)
+	}
+
+	conn, err := dialer.Dial("tcp", host)
+	if err != nil {
+		return nil, err
+	}
+
+	connection := &timeBoundedConnection{
+		Conn: conn,
+	}
+
+	// We need to temporary switch on timeouts to prevent hanging
+	// on IO operations if server is successfully connected by TCP
+	// but give no response.
+	connection.readTimeout = timeouts.SendTimeout
+	connection.writeTimeout = timeouts.ReceiveTimeout
+
+	sshConnection, channels, requests, err := ssh.NewClientConn(
+		connection, host, config,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	connection.readTimeout = 0
+	connection.writeTimeout = 0
+
+	return &Remote{
+		client:     ssh.NewClient(sshConnection, channels, requests),
+		connection: connection,
+		timeouts:   &timeouts,
+	}, nil
 }
 
 // NewRemoteRawKeyAuthRunnerWithTimeouts is same, as NewRemoteKeyAuthRunnerWithTimeouts,
@@ -198,6 +260,25 @@ func NewRemotePassAuthRunnerWithTimeouts(
 		client:     ssh.NewClient(sshConnection, channels, requests),
 		connection: connection,
 		timeouts:   &timeouts,
+	}, nil
+}
+
+// NewRemoteAgenntAuthRunner is one of functions for creating remote runner
+func NewRemoteAgentAuthRunner(user, host, agent string) (*Remote, error) {
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{sshAgentCallback(agent)},
+	}
+
+	server, err := ssh.Dial("tcp", host, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Remote{
+		client:     server,
+		connection: nil,
+		timeouts:   nil,
 	}, nil
 }
 
